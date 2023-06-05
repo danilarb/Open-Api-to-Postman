@@ -7,7 +7,7 @@ url = '{{url}}'
 def main():
     open_api = get_open_api()
     postman = get_postman(open_api)
-    print(postman)
+    print('final:', postman)
 
 
 def get_postman(open_api):
@@ -53,7 +53,6 @@ def get_postman(open_api):
                         'cookie': [],
                         'body': create_response_body(response, open_api),
                     }
-            print(method, details)
             postman_item = {
                 'name': details['summary'],
                 'request': request,
@@ -83,38 +82,86 @@ def resolve_ref(ref, open_api):
     return None
 
 
+def get_formatted_prop_value(prop_value, default):
+    if 'example' in prop_value:
+        return prop_value['example']
+    return default
+
+
+def process_property(prop_value):
+    type_mapping = {
+        'string': 'string',
+        'integer': 0,
+        'boolean': False,
+        'array': [],
+        'object': {},
+    }
+    if prop_value['type'] not in type_mapping:
+        print('Error: Unknown type -', prop_value['type'])
+        raise Exception('Unknown type')
+
+    return get_formatted_prop_value(prop_value, type_mapping[prop_value['type']])
+
+
+def resolve_and_update_properties(j, key_dict, open_api):
+    new_properties = resolve_ref(j, open_api)
+    for prop, prop_value in new_properties['properties'].items():
+        new_prop = process_property(prop_value)
+        if isinstance(key_dict, list):
+            key_dict.append(new_prop)
+        elif isinstance(key_dict, dict):
+            key_dict[prop] = new_prop
+
+
 def create_response_body(response, open_api):
     # TODO: Currently only supports application/JSON responses
     # DOING: finishing this
     try:
         body = {}
         for key, value in response['content']['application/json']['schema']['properties'].items():
+            key_dict = {}
+            if 'type' in value:
+                if value['type'] == 'object':
+                    key_dict = {}
+                elif value['type'] == 'array':
+                    key_dict = []
             for i, j in value.items():
                 if i == '$ref':
-                    print('refresolve', resolve_ref(j, open_api))
-                    thing = resolve_ref(j, open_api)
-                    for prop, prop_value in thing['properties'].items():
-                        if prop_value['type'] == 'string':
-                            formatted_prop_value = 'string'
-                        elif prop_value['type'] == 'integer':
-                            formatted_prop_value = 0
-                        elif prop_value['type'] == 'boolean':
-                            formatted_prop_value = False
-                        elif prop_value['type'] == 'array':
-                            formatted_prop_value = []
-                        elif prop_value['type'] == 'object':
-                            formatted_prop_value = {}
-                        else:
-                            print(prop_value['type'])
-                            raise Exception('Unknown type')
-                        body[key][prop] = formatted_prop_value
-                    body[key].pop(i)  # Removes $ref
-                else:
-                    body[key] = j
-            print('body thing', key, value)
+                    resolve_and_update_properties(j, key_dict, open_api)
+                    body[key] = key_dict
+                elif i == 'items':
+                    for k, l in j.items():
+                        if k == '$ref':
+                            resolve_and_update_properties(l, key_dict, open_api)
+                    body[key] = key_dict
+            print('body thing', body)
     except Exception as e:
         print('Something went wrong:', e)
         return ''
+
+
+def transform_properties(properties):
+    transformed_properties = {}
+
+    for key, value in properties.items():
+        if 'type' in value and value['type'] == 'object':
+            print('asd')
+            if '$ref' in value:
+                transformed_properties[key] = {'$ref': value['$ref']}
+                for sub_key, sub_value in value.items():
+                    if sub_key != '$ref':
+                        transformed_properties[key][sub_key] = sub_value
+            else:
+                transformed_properties[key] = transform_properties(value)
+        if 'type' in value and value['type'] == 'array':
+            transformed_properties[key] = []
+            if 'items' in value:
+                for sub_key, sub_value in value['items'].items():
+                    transformed_properties[key].append(transform_properties({sub_key: sub_value}))
+        else:
+            transformed_properties[key] = value
+
+    return transformed_properties
 
 
 def get_response_headers(response):
@@ -180,4 +227,22 @@ def convert_path(path):
 
 
 if __name__ == '__main__':
+    p = {
+        "data": {
+            "type": "array",
+            "items": {
+                "$ref": "#/components/schemas/FarmInfo",
+                "something": "hi"
+            }
+        },
+        "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "hello": "world"
+        },
+        "links": {
+            "$ref": "#/components/schemas/Links",
+            "foo": "bar"
+        }
+    }
+    new = transform_properties(p)
     main()
