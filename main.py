@@ -7,7 +7,10 @@ url = '{{url}}'
 def main():
     open_api = get_open_api()
     postman = get_postman(open_api)
+    with open('postmantrial.json', 'w') as file:
+        json.dump(postman, file, ensure_ascii=True, indent=4)
     print('final:', postman)
+
 
 
 def get_postman(open_api):
@@ -180,10 +183,12 @@ def create_response_body(response, open_api):
 
 def get_response_headers(response):
     # TODO: Add all headers
-    headers = [{
-        'key': 'Content-Type',
-        'value': list(response['content'].keys())[0]
-    }]
+    headers = []
+    if 'content' in response:
+        headers.append({
+            'key': 'Content-Type',
+            'value': list(response['content'].keys())[0]
+        })
     return headers
 
 
@@ -241,24 +246,4 @@ def convert_path(path):
 
 
 if __name__ == '__main__':
-    p = {
-        "data": {
-            "type": "array",
-            "items": {
-                "$ref": "#/components/schemas/FarmInfo",
-                "something": "hi"
-            }
-        },
-        "meta": {
-            "$ref": "#/components/schemas/Meta",
-            "hello": "world"
-        },
-        "links": {
-            "$ref": "#/components/schemas/Links",
-            "foo": "bar"
-        },
-        "stinks": {
-            "$ref": "#/components/schemas/stinks",
-        }
-    }
     main()
